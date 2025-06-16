@@ -1,34 +1,53 @@
-/* 
-  Baem text editor
-  Made by sefcomp
+/*
 
-  Based on Kilo editor by antirez
+ Baem editor
+ by sef-comp
+
+
+ Based on Kilo editor by antirez
+ https://github.com/antirez/kilo
+
 */
 
 
+#include "editor.h"
+#include "errors.h"
+#include <stdlib.h>
 #include <termios.h>
 #include <unistd.h>
-#include "editor.h"
-#include "terminal.h"
 
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #define _GNU_SOURCE
 
-
-int main(int argc, char* argv[]){
-  struct termios term;
-
-  enableRawMode(&term);
-  EditorConfig e = *initEditor();
+struct termios termios_orig;
 
 
-  while(1){
-    // editorRefreshScreen();
-    // editorProcessKeypress();
-  }
+void disableRawMode(){
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios_orig) == -1) die("tcsetattr");
+}
 
-  disableRawMode(&term);
+void enableRawMode(){
+  if (tcgetattr(STDIN_FILENO, &termios_orig) == -1) die("tcgetattr");
+  atexit(disableRawMode);
 
+  struct termios termios_raw = termios_orig;
+  termios_raw.c_iflag &= ~(BRKINT | ICRNL | INPCK | ISTRIP | IXON);
+  termios_raw.c_oflag &= ~(OPOST);
+  termios_raw.c_cflag |= (CS8);
+  termios_raw.c_lflag &= ~(ECHO | ICANON | IEXTEN | ISIG);
+  termios_raw.c_cc[VMIN] = 0;
+  termios_raw.c_cc[VTIME] = 1;
+
+  if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios_raw) == -1) die("tcsetattr");
+}
+
+int main(){
+  enableRawMode();
+  
+  initEditor();
+
+  mainLoop();
+  
   return 0;
 }
