@@ -6,4 +6,4 @@ Baem is a terminal-based code and text editor with vim-like motions based on Kil
 
 
 ###
-[Kilo editor (https://github.com/antirez/kilo)][Kilo editor] by antirez
+Kilo editor (https://github.com/antirez/kilo) by antirez
