@@ -36,9 +36,9 @@ enum editorKey {
 };
 
 #define FOREACH_MODE(MODE) \
-        MODE(NORMAL)   \
-        MODE(INSERT)  \
-        MODE(VISUAL)   \
+        MODE(NORMAL) \
+        MODE(INSERT) \
+        MODE(VISUAL) \
 
 #define GENERATE_ENUM(ENUM) ENUM,
 #define GENERATE_STRING(STRING) #STRING,
@@ -390,7 +390,7 @@ void editorDrawRows(struct abuf *ab) {
       if (Editor.numrows == 0 && y == Editor.screen_rows / 3) {
         char welcome[80];
         int welcomelen = snprintf(welcome, sizeof(welcome),
-          "Baem editor -- version %s", EDITOR_VERSION);
+          "Corvux editor -- version %s", EDITOR_VERSION);
         if (welcomelen > Editor.screen_cols) welcomelen = Editor.screen_cols;
         int padding = (Editor.screen_cols - welcomelen) / 2;
         if (padding) {
@@ -641,6 +641,27 @@ int editorProcessNormalMode(int c){
   static int quit_times = QUIT_PERSISTENCE;
 
   switch (c) {
+    case 'h':
+      editorMoveCursor(ARROW_LEFT);
+      break;
+
+    case 'j':
+      editorMoveCursor(ARROW_DOWN);
+      break;
+
+    case 'k':
+      editorMoveCursor(ARROW_UP);
+      break;
+
+    case 'l':
+      editorMoveCursor(ARROW_RIGHT);
+      break;
+
+    case 'x':
+      editorMoveCursor(ARROW_RIGHT);
+      editorDeleteChar();
+      break;
+
     case 'i':
       Editor.editorMode = INSERT;
       break;
@@ -687,20 +708,7 @@ int editorProcessInsertMode(int c){
     //   editorFind();
     //   break;
 
-    case PAGE_UP:
-    case PAGE_DOWN:
-      {
-        if (c == PAGE_UP){
-          Editor.cursor_y = Editor.row_offset;
-        } else if (c == PAGE_DOWN){
-          Editor.cursor_y = Editor.row_offset + Editor.screen_rows - 1;
-          Editor.cursor_y = Editor.cursor_y > Editor.numrows ? Editor.numrows : Editor.cursor_y; 
-        }
-        int times = Editor.screen_rows;
-        while (times--) editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
-      }
-      break;
-
+    
     case BACKSPACE:
     case CTRL_KEY('h'):
     case DEL_KEY:
@@ -730,6 +738,20 @@ int editorProcessKeypress(){
     case ARROW_RIGHT:
       editorMoveCursor(c);
       return 0;
+    case PAGE_UP:
+    case PAGE_DOWN:
+      {
+        if (c == PAGE_UP){
+          Editor.cursor_y = Editor.row_offset;
+        } else if (c == PAGE_DOWN){
+          Editor.cursor_y = Editor.row_offset + Editor.screen_rows - 1;
+          Editor.cursor_y = Editor.cursor_y > Editor.numrows ? Editor.numrows : Editor.cursor_y; 
+        }
+        int times = Editor.screen_rows;
+        while (times--) editorMoveCursor(c == PAGE_UP ? ARROW_UP : ARROW_DOWN);
+      }
+      break;
+
   }
 
   switch (Editor.editorMode) {

@@ -1,6 +1,6 @@
 /*
 
- Baem editor
+ Corvux editor
  by sef-comp
 
 
