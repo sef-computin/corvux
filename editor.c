@@ -16,10 +16,37 @@
 #include <unistd.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define EDITOR_VERSION "0.0.2"
+#define EDITOR_VERSION "0.0.3"
 #define TAB_STOP 3
 #define LEFT_PADDING 5
 #define QUIT_PERSISTENCE 3
+
+int LOGO[] = {
+    22, 6, -1, 
+    20, 10, -1,
+    19, 13, -1,
+    19, 17, -1,
+    19, 19, -1,
+    20, 12, -1,
+    19, 9, -1,
+    19, 9, -1,
+    17, 13, -1,
+    16, 14, -1,
+    12, 18, -1,
+    12, 20, -1,
+    11, 21, -1,
+    9, 21, -1,
+    9, 21, -1,
+    6, 22, -1,
+    4, 21, -1,
+    12, 5, 5, 3, -1,
+    14, 3, 7, 1, -1,
+    16, 1, 7, 1, -1,
+    11, 9, 1, 7, -1,
+    -2
+  };
+
+#define LOGO_WIDTH 45
 
 
 enum editorKey {
@@ -382,12 +409,65 @@ void editorScroll(){
   }
 }
 
+int editorDrawLogo(struct abuf *ab){
+  
+  int padding = (Editor.screen_cols - LOGO_WIDTH) / 2;
+  if (padding < 0) padding = 0;
+  int p = padding;
+  if (p) {
+     abAppend(ab, "~", 1);
+     p--;
+  }
+  while (p--) abAppend(ab, " ", 1);
+
+
+  int rows = 1;
+  int len = sizeof(LOGO) / sizeof(int);
+
+  int current_color = 1;
+  for (int i = 0; i < len; i++){
+    if (LOGO[i] == -2){
+      break;
+    }
+    if (LOGO[i] == -1){
+      rows++;
+      current_color = 1;
+      // abAppend(ab, "\x1b[m", 3);
+      abAppend(ab, "\x1b[K", 3);
+      abAppend(ab, "\r\n", 2);
+      int p = padding;
+      if (p) {
+          abAppend(ab, "~", 1);
+          p--;
+      }
+      while (p--) abAppend(ab, " ", 1);
+      continue;
+    }
+    if (LOGO[i] >= 0){
+      for (int j = 0; j<LOGO[i]; j++) abAppend(ab, " ", 1);
+      if (current_color > 0){
+        abAppend(ab, "\x1b[7m", 4); 
+      } else {
+        abAppend(ab, "\x1b[m", 3);
+      }
+      current_color*=-1;
+    }
+  }
+
+
+  return rows;
+}
+
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < Editor.screen_rows; y++) {
     int filerow = y + Editor.row_offset;
     if (filerow >= Editor.numrows){
-      if (Editor.numrows == 0 && y == Editor.screen_rows / 3) {
+      if (Editor.numrows == 0 && y == Editor.screen_rows / 4) {
+        y += editorDrawLogo(ab);
+        y++;
+        abAppend(ab, "\x1b[K", 3);
+        abAppend(ab, "\r\n", 2);
         char welcome[80];
         int welcomelen = snprintf(welcome, sizeof(welcome),
           "Corvux editor -- version %s", EDITOR_VERSION);
