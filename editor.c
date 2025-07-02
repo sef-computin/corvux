@@ -103,6 +103,7 @@ struct editorConfig{
   int dirty;
   char editorMode;
   char *filename;
+  // char *command_buf;
   char statusmsg[80];
   time_t statusmsg_time;
 
@@ -114,6 +115,8 @@ struct editorConfig{
 /*  prototypes  */
 void editorSetStatusMessage(const char *fmt, ...);
 int editorReadKey();
+void editorFree();
+void initEditor();
 void editorRefreshScreen();
 char *editorPrompt(char *prompt, void (*callback)(char *, int));
 
@@ -331,7 +334,7 @@ char *editorRowsToString(int *buflen){
 }
 
 void editorOpen(char *filename){
-  free(Editor.filename);
+  if (Editor.filename != NULL) free(Editor.filename);
   Editor.filename = strdup(filename);
 
   // editorSelectSyntaxHighlight();
@@ -519,15 +522,19 @@ void editorDrawMessageBar(struct abuf *ab){
 
 
 void editorDrawStatusBar(struct abuf *ab) {
-  abAppend(ab, "\x1b[7m", 4);
+  // abAppend(ab, "\x1b[7m", 4);
   char status[80], rstatus[80];
   char mstatus[9];
 
-  int modelen = snprintf(mstatus, sizeof(mstatus), "\\%s\\", MODES_STRING[Editor.editorMode]);
+  abAppend(ab, "\x1b[46m", 5);
+  int modelen = snprintf(mstatus, sizeof(mstatus), "|%s|", MODES_STRING[Editor.editorMode]);
   abAppend(ab, mstatus, modelen);
-  abAppend(ab, " ", 1);
+  // abAppend(ab, " ", 1);
   int cols_left = Editor.screen_cols - modelen - 1; 
 
+  abAppend(ab, "\x1b[m", 3);
+  abAppend(ab, "\x1b[7m", 4);  
+  abAppend(ab, " ", 1);
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s", 
                      Editor.filename ? Editor.filename : "[No Name]", Editor.numrows,
                      Editor.dirty ? "(*)" : "");
@@ -716,11 +723,36 @@ void editorMoveCursor(int key){
   }
 }
 
+int editorProcessCommand(){
+  char* command;
+  command = editorPrompt(":%s", NULL);
+
+  if (command == NULL){
+    return 0;
+  }
+  if (strchr(command, 'w')){
+    editorSave();
+  }
+  if (strchr(command, 'q')){
+    if (!Editor.dirty || strchr(command, '!')){
+      return 1;
+    } 
+  }
+
+  return 0;
+}
+
 int editorProcessNormalMode(int c){
 
   static int quit_times = QUIT_PERSISTENCE;
 
   switch (c) {
+    case ':':
+      if (editorProcessCommand() == 1){ 
+        write(STDOUT_FILENO, "\x1b[2J", 4);
+        write(STDOUT_FILENO, "\x1b[H", 3);
+        return -1; }
+      break;
     case 'h':
       editorMoveCursor(ARROW_LEFT);
       break;
@@ -743,17 +775,47 @@ int editorProcessNormalMode(int c){
       break;
 
     case 'i':
+    case 'a':
+      if (c == 'a') editorMoveCursor(ARROW_RIGHT);
       Editor.editorMode = INSERT;
       break;
 
     case CTRL_KEY('s'):
       editorSave();
       break;
+    
+    case CTRL_KEY('o'):
+      if (Editor.dirty && quit_times > 0) {
+        editorSetStatusMessage("WARNING!!! File has unsaved changes. "
+          "Press %d more times to quit.", quit_times);
+        quit_times--;
+        return 0;
+      }
+      char *fname = editorPrompt("Open file: %s (ESC to cancel)", NULL);
+      if (fname == NULL){
+        editorSetStatusMessage("Operation aborted");
+        free(fname);
+        break;
+      }
+      initEditor();
+      editorOpen(fname);
+      free(fname);
+      break;
+
+    case CTRL_KEY('n'):
+      if (Editor.dirty && quit_times > 0) {
+        editorSetStatusMessage("WARNING!!! File has unsaved changes. "
+          "Press %d more times to quit.", quit_times);
+        quit_times--;
+        return 0;
+      }
+      initEditor();
+      break;
 
     case CTRL_KEY('q'):
       if (Editor.dirty && quit_times > 0) {
         editorSetStatusMessage("WARNING!!! File has unsaved changes. "
-          "Press Ctrl-Q %d more times to quit.", quit_times);
+          "Press %d more times to quit.", quit_times);
         quit_times--;
         return 0;
       }
@@ -797,7 +859,7 @@ int editorProcessInsertMode(int c){
       break;
 
     default:
-      if (!iscntrl(c)) editorInsertChar(c);
+      if (!iscntrl(c) || c == '\t') editorInsertChar(c);
       break;
   }
 
@@ -867,7 +929,7 @@ void initEditor(){
   Editor.statusmsg[0] = '\0';
   Editor.statusmsg_time = 0;
 
-  atexit(editorFree);
+  // atexit(editorFree);
   if (getWindowSize(&Editor.screen_rows, &Editor.screen_cols) == -1) die("getWindowSize");
   Editor.screen_rows -= 2;
 }
@@ -901,6 +963,12 @@ void editorRefreshScreen(){
 
   abAppend(&ab, "\x1b[?25h", 6); // show cursor
 
+  if (Editor.editorMode == INSERT) {
+    abAppend(&ab, "\x1b[\x36 q", 5);
+  } else {
+    abAppend(&ab, "\x1b[\x32 q", 5);
+  }
+
   write(STDOUT_FILENO, ab.b, ab.len);
   abFree(&ab);
 }
@@ -908,13 +976,15 @@ void editorRefreshScreen(){
 int mainLoop(){
 
   // if (filename) editorOpen(filename);
-  editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-F = find | Ctrl-Q = quit");
+  editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-O = open | Ctrl-N = new file | Ctrl-Q = quit");
 
   while(1){
     editorRefreshScreen();
     int ret = editorProcessKeypress();
     if (ret == -1){ break; }
   }
+
+  editorFree();
 
   return 0;
 }

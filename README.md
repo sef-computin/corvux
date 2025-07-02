@@ -1,8 +1,8 @@
 ##
-Baem
+Corvux
 
 ###
-Baem is a terminal-based code and text editor with vim-like motions based on Kilo editor.
+Corvux is a terminal-based code and text editor with vim-like motions based on Kilo editor.
 
 
 ###
