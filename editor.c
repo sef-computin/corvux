@@ -87,7 +87,7 @@ typedef struct {
   int render_size;
   char *chars;
   char *render;
-  char *hl;
+  unsigned char *hl;
 } erow;
 
 
@@ -182,8 +182,25 @@ int editorRowRxToCx(erow *row, int rx){
 
 void editorUpdateSyntax(erow *erow){
   erow->hl = realloc(erow->hl, erow->render_size);
-  memset(erow->hl, 0, erow->render_size);
- 
+  memset(erow->hl, PLAIN, erow->render_size);
+
+  if (lexerGetSyntaxName() == NULL) return; 
+
+  lexerSetInput(erow->render, erow->render_size);
+
+  int token_type;
+  int pos = 0;
+  int token_len;
+
+  while (token_type != EOF){
+    pos = lexerGetPos();
+
+    if (pos >= erow->render_size) return;
+    token_type = lexerGetNextToken(&token_len);
+
+    memset(&erow->hl[pos], token_type, token_len);
+  }
+
   return;
 }
 
@@ -350,7 +367,8 @@ void editorOpen(char *filename){
   if (Editor.filename != NULL) free(Editor.filename);
   Editor.filename = strdup(filename);
 
-  // editorSelectSyntaxHighlight();
+  char *ext = strrchr(Editor.filename, '.');
+  if (ext != NULL) lexerSetSyntax(ext);
 
   FILE *fp = fopen(filename, "r");
   if (!fp) die("open");
@@ -378,7 +396,13 @@ void editorSave(){
       editorSetStatusMessage("Save aborted");
       return;
     }
-    // editorSelectSyntaxHighlight();
+    char *ext = strrchr(Editor.filename, '.');
+    lexerSetSyntax(ext);
+
+    for (int filerow = 0; filerow < Editor.numrows; filerow++){
+      editorUpdateSyntax(&Editor.row[filerow]);
+    }
+
   };
   
   int len;
@@ -474,6 +498,16 @@ int editorDrawLogo(struct abuf *ab){
   return rows;
 }
 
+int editorSyntaxToColor(int hl){
+  switch (hl){
+    case NUMBER: return 33;
+    case STRING: return 36;
+    case KEYWORD: return 31;
+    case DTYPE: return 32;
+    default: return 37;
+  }
+}
+
 void editorDrawRows(struct abuf *ab) {
   int y;
   for (y = 0; y < Editor.screen_rows; y++) {
@@ -512,8 +546,18 @@ void editorDrawRows(struct abuf *ab) {
       if (len > Editor.screen_cols) len = Editor.screen_cols;
 
       char *c = &Editor.row[filerow].render[Editor.col_offset];
+      unsigned char *hl = &Editor.row[filerow].hl[Editor.col_offset];
+      int current_hl = PLAIN;
+
       int j;
       for (j = 0; j < len; j++){ 
+        if (hl[j] != current_hl){
+          int color = editorSyntaxToColor(hl[j]);
+          char buf[16];
+          int clen = snprintf(buf, sizeof(buf), "\x1b[%dm", color);
+          abAppend(ab, buf, clen);
+          current_hl = hl[j];
+        }
         abAppend(ab, &c[j], 1);
       }
       abAppend(ab, "\x1b[39m", 5);
@@ -532,7 +576,6 @@ void editorDrawMessageBar(struct abuf *ab){
   if (msglen && time(NULL) - Editor.statusmsg_time < 5) abAppend(ab, Editor.statusmsg, msglen);
 }
 
-
 void editorDrawStatusBar(struct abuf *ab) {
   // abAppend(ab, "\x1b[7m", 4);
   char status[80], rstatus[80];
@@ -550,8 +593,10 @@ void editorDrawStatusBar(struct abuf *ab) {
   int len = snprintf(status, sizeof(status), "%.20s - %d lines %s", 
                      Editor.filename ? Editor.filename : "[No Name]", Editor.numrows,
                      Editor.dirty ? "(*)" : "");
-  int rlen = snprintf(rstatus, sizeof(rstatus), "%d/%d",
-                      Editor.cursor_y+1, Editor.numrows);
+
+  char *syn_type = lexerGetSyntaxName();
+  int rlen = snprintf(rstatus, sizeof(rstatus), "%s ; %d/%d",
+                      syn_type ? syn_type : "[unknown filetype]", Editor.cursor_y+1, Editor.numrows);
 
 
   len = len < cols_left ? len : cols_left;
@@ -569,7 +614,7 @@ void editorDrawStatusBar(struct abuf *ab) {
     }
   }
 
-  
+
   abAppend(ab, "\x1b[m", 3);
   abAppend(ab, "\r\n", 2);
 }
@@ -995,8 +1040,6 @@ int mainLoop(){
     int ret = editorProcessKeypress();
     if (ret == -1){ break; }
   }
-
-  editorFree();
 
   return 0;
 }

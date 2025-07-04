@@ -12,6 +12,7 @@
 
 #include "editor.h"
 #include "errors.h"
+#include "lexer.h"
 #include <stdlib.h>
 #include <termios.h>
 #include <unistd.h>
@@ -46,12 +47,15 @@ int main(int argc, char* argv[]){
   enableRawMode();
   
   initEditor();
+  initLexer();
 
   if(argc>=2){
     editorOpen(argv[1]);
   }
 
   mainLoop();
+
+  editorFree();
   
   return 0;
 }

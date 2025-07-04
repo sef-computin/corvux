@@ -1,6 +1,5 @@
 #include "lexer.h"
 #include <ctype.h>
-#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 
@@ -37,42 +36,48 @@ char *C_HL_keywords[] = {
   "struct", "union", "typedef", "static", "enum", "class", "case", NULL
 };
 char *C_HL_dtypes[] = {
-  "int|", "long|", "double|", "float|", "char|", "unsigned|", "signed|",
-  "void|", NULL
+  "int", "long", "double", "float", "char", "unsigned", "signed",
+  "void", NULL
 };
 
 char *C_HL_separators[] = {
-  " ", ".", ",", "->", NULL
+  " ", ".", ",", "->", ";", ":", "(", ")", "{", "}", NULL
 };
 
-int C_GET_TOKEN_TYPE(char *token, int len){
-  if (token == NULL || len == 0) return 0;
+int C_GET_TOKEN_TYPE(char *token, int token_len){
+  if (token == NULL || token_len == 0) return 0;
 
-  if ((token[0] == '\'' && token[len-1] == '\'') || (token[0] == '\"' && token[len-1] == '\"')){
+  if ((token[0] == '\'' && token[token_len-1] == '\'') || (token[0] == '\"' && token[token_len-1] == '\"')){
     return STRING;
   }
   
   for (int i = 0; C_HL_dtypes[i]; i++){
-    if (strncmp(token, C_HL_dtypes[i], len)){
+    if (token_len != strlen(C_HL_dtypes[i])) continue;
+    if (!strncmp(token, C_HL_dtypes[i], token_len)){
       return DTYPE;
     }
   } 
 
   for (int i = 0; C_HL_keywords[i]; i++){
-    if (strncmp(token, C_HL_keywords[i], len)){
+    if (token_len != strlen(C_HL_keywords[i])) continue;;
+    if (!strncmp(token, C_HL_keywords[i], token_len)){
       return KEYWORD;
     }
   }
 
-  for (int i = 0; i < len; i++){
+  for (int i = 0; i < token_len; i++){
+    if (i == 0 && token[i] == '-') continue;
     if (!isdigit(token[i])) break;
-    if (i == len-1){
+    if (i == token_len-1){
       return NUMBER;
     }
   }
 
+  if (token_len==4 && !strncmp(token, "NULL", 4)) return NUMBER;
+
   return PLAIN;
 };
+
 
 struct syntaxRules SXDB[] = {
   {
@@ -86,21 +91,22 @@ struct syntaxRules SXDB[] = {
   },
 };
 
+#define SXDB_ENTRIES (sizeof(SXDB) / sizeof(SXDB[0]))
+
 lexer Lexer;
 
-void initLexer(){
+void lexerClear(){
   Lexer.input = NULL;
-  Lexer.len = 0;
   Lexer.pos = 0;
+  Lexer.len = 0;
+}
+
+void initLexer(){
+  lexerClear();
   Lexer.syntax = NULL;
 }
 
-void freeLexer(){
-  free(Lexer.input);
-  free(Lexer.syntax);
-}
-
-int setInput(char *input, int len){
+int lexerSetInput(char *input, int len){
   if (input == NULL || len <= 0){
     return -1;
   }
@@ -111,25 +117,30 @@ int setInput(char *input, int len){
   return 0;
 }
 
-int getNextToken(int *token_len){
+int lexerGetNextToken(int *token_len){
   *token_len = 0;
   
   if (Lexer.pos >= Lexer.len){
     return EOF;
   }
+
   if (Lexer.input == NULL){
     return -1;
   }
+
 
   if (Lexer.syntax == NULL){
     *token_len = Lexer.len;
     return PLAIN;
   }
 
+  int in_string = -1;
   for (int i = Lexer.pos; i < Lexer.len; i++){
-    for (int j = 0; Lexer.syntax->separators[j]; j++){
+    if (Lexer.input[i] == '\"') in_string *= -1;
+    if (in_string == 1) continue;
+    for (int j = 0; Lexer.syntax->separators[j]; ++j){
       int sep_len = strlen(Lexer.syntax->separators[j]);
-      if (strncmp(&Lexer.input[i], Lexer.syntax->separators[j], sep_len)){
+      if (!strncmp(&Lexer.input[i], Lexer.syntax->separators[j], sep_len)){
         *token_len = i - Lexer.pos;
         int token_type = Lexer.syntax->get_token_type(&Lexer.input[Lexer.pos], *token_len); 
         Lexer.pos = (i + sep_len) < Lexer.len ? i + sep_len : Lexer.len;
@@ -141,5 +152,30 @@ int getNextToken(int *token_len){
   *token_len = Lexer.len - Lexer.pos;
   int token_type = Lexer.syntax->get_token_type(&Lexer.input[Lexer.pos], *token_len); 
   Lexer.pos = Lexer.len;
+  lexerClear();
   return token_type;
+}
+
+int lexerGetPos(){
+  return Lexer.pos;
+}
+
+char *lexerGetSyntaxName(){
+  return Lexer.syntax ? Lexer.syntax->filetype : NULL;
+}
+
+int lexerSetSyntax(char *extension){
+ 
+  for (unsigned int j = 0; j < SXDB_ENTRIES; j++){
+    struct syntaxRules *s = &SXDB[j];
+    unsigned int i = 0;
+    while (s->extensions[i]){
+      if (!strcmp(s->extensions[i], extension)){
+        Lexer.syntax = s;
+        return 0;
+      }
+      i++;
+    }
+  }
+  return -1;
 }

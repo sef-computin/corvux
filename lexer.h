@@ -12,11 +12,13 @@
   };
 
   void initLexer();
-  void freeLexer();
 
-  int setInput(char *input, int len);
-  int setSyntax(char *extension);
-  int getNextToken(int* token_len);
+  int lexerSetInput(char *input, int len);
+  int lexerSetSyntax(char *extension);
+  char *lexerGetSyntaxName();
+  int lexerGetNextToken(int* token_len);
+  int lexerGetPos();
+  
 
 
 #endif // !lexer
