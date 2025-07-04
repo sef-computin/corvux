@@ -121,6 +121,7 @@ int lexerGetNextToken(int *token_len){
   *token_len = 0;
   
   if (Lexer.pos >= Lexer.len){
+    lexerClear();
     return EOF;
   }
 
@@ -152,7 +153,6 @@ int lexerGetNextToken(int *token_len){
   *token_len = Lexer.len - Lexer.pos;
   int token_type = Lexer.syntax->get_token_type(&Lexer.input[Lexer.pos], *token_len); 
   Lexer.pos = Lexer.len;
-  lexerClear();
   return token_type;
 }
 
