@@ -1,3 +1,4 @@
+#include "lexer.h"
 #define _DEFAULT_SOURCE
 #define _BSD_SOURCE
 #define _GNU_SOURCE
@@ -59,12 +60,14 @@ enum editorKey {
   HOME_KEY,
   END_KEY,
   PAGE_UP,
-  PAGE_DOWN
+  PAGE_DOWN,
+  ESCAPE
 };
 
 #define FOREACH_MODE(MODE) \
         MODE(NORMAL) \
         MODE(INSERT) \
+        MODE(COMMND) \
         MODE(VISUAL) \
 
 #define GENERATE_ENUM(ENUM) ENUM,
@@ -84,6 +87,7 @@ typedef struct {
   int render_size;
   char *chars;
   char *render;
+  char *hl;
 } erow;
 
 
@@ -114,6 +118,7 @@ struct editorConfig{
 
 /*  prototypes  */
 void editorSetStatusMessage(const char *fmt, ...);
+void editorReadCommand(const char *fmt, ...);
 int editorReadKey();
 void editorFree();
 void initEditor();
@@ -175,6 +180,14 @@ int editorRowRxToCx(erow *row, int rx){
   return cx;
 }
 
+void editorUpdateSyntax(erow *erow){
+  erow->hl = realloc(erow->hl, erow->render_size);
+  memset(erow->hl, 0, erow->render_size);
+ 
+  return;
+}
+
+
 void editorUpdateRow(erow *row){
   int tabs = 0;
   int j;
@@ -197,7 +210,7 @@ void editorUpdateRow(erow *row){
   row->render[idx] = '\0';
   row->render_size = idx;
 
-  // editorUpdateSyntax(row);
+  editorUpdateSyntax(row);
 }
 
 void editorInsertRow(char *s, int at, size_t len) {
@@ -217,7 +230,7 @@ void editorInsertRow(char *s, int at, size_t len) {
 
   Editor.row[at].render_size = 0;
   Editor.row[at].render = NULL;
-  // Editor.row[at].hl = NULL;
+  Editor.row[at].hl = NULL;
   // Editor.row[at].hl_open_comment = 0;
   editorUpdateRow(&Editor.row[at]);
 
@@ -228,7 +241,7 @@ void editorInsertRow(char *s, int at, size_t len) {
 void editorFreeRow(erow *row){
   free(row->render);
   free(row->chars);
-  // free(row->hl);
+  free(row->hl);
 }
 
 void editorDeleteRow(int at){
@@ -468,7 +481,6 @@ void editorDrawRows(struct abuf *ab) {
     if (filerow >= Editor.numrows){
       if (Editor.numrows == 0 && y == Editor.screen_rows / 4) {
         y += editorDrawLogo(ab);
-        y++;
         abAppend(ab, "\x1b[K", 3);
         abAppend(ab, "\r\n", 2);
         char welcome[80];
@@ -585,7 +597,7 @@ char *editorPrompt(char *prompt, void (*callback)(char *, int)){
     int c = editorReadKey();
     if (c == DEL_KEY || c == CTRL_KEY('h') || c == BACKSPACE){
       if (buflen != 0) buf[--buflen] = '\0';
-    } else if (c == '\x1b'){
+    } else if (c == ESCAPE){
       editorSetStatusMessage("");
       if (callback) callback(buf, c);
       free(buf);
@@ -618,11 +630,11 @@ int editorReadKey(){
 
   if (c == '\x1b') {
     char seq[3];
-    if (read(STDIN_FILENO, &seq[0], 1) != 1) return '\x1b';
-    if (read(STDIN_FILENO, &seq[1], 1) != 1) return '\x1b';
+    if (read(STDIN_FILENO, &seq[0], 1) != 1) return ESCAPE;
+    if (read(STDIN_FILENO, &seq[1], 1) != 1) return ESCAPE;
     if (seq[0] == '[') {
       if (seq[1] >= '0' && seq[1] <= '9'){
-        if (read(STDIN_FILENO, &seq[2], 1) != 1) return '\x1b';
+        if (read(STDIN_FILENO, &seq[2], 1) != 1) return ESCAPE;
         if (seq[2] == '~'){
           switch (seq[1]) {
             case '1': return HOME_KEY;
@@ -651,7 +663,7 @@ int editorReadKey(){
       }
     }
 
-    return '\x1b';
+    return ESCAPE;
   } else {
     return c;
   }
@@ -730,13 +742,17 @@ int editorProcessCommand(){
   if (command == NULL){
     return 0;
   }
+
+
   if (strchr(command, 'w')){
     editorSave();
   }
+  
   if (strchr(command, 'q')){
     if (!Editor.dirty || strchr(command, '!')){
       return 1;
-    } 
+    }
+    editorSetStatusMessage("You have unsaved changes!");
   }
 
   return 0;
@@ -748,10 +764,13 @@ int editorProcessNormalMode(int c){
 
   switch (c) {
     case ':':
+      Editor.editorMode = COMMND;
       if (editorProcessCommand() == 1){ 
         write(STDOUT_FILENO, "\x1b[2J", 4);
         write(STDOUT_FILENO, "\x1b[H", 3);
-        return -1; }
+        return -1; 
+      }
+      Editor.editorMode = NORMAL;
       break;
     case 'h':
       editorMoveCursor(ARROW_LEFT);
@@ -776,7 +795,12 @@ int editorProcessNormalMode(int c){
 
     case 'i':
     case 'a':
-      if (c == 'a') editorMoveCursor(ARROW_RIGHT);
+      if (Editor.row != NULL && c == 'a' && Editor.cursor_x < Editor.row[Editor.cursor_y].size) editorMoveCursor(ARROW_RIGHT);
+      Editor.editorMode = INSERT;
+      break;
+    
+    case 'o':
+      editorInsertNewline();
       Editor.editorMode = INSERT;
       break;
 
@@ -871,7 +895,7 @@ int editorProcessKeypress(){
 
   switch (c) {
     case CTRL_KEY('x'):
-    case '\x1b':
+    case ESCAPE:
       Editor.editorMode = NORMAL;
       return 0;
     case ARROW_LEFT:
@@ -929,7 +953,6 @@ void initEditor(){
   Editor.statusmsg[0] = '\0';
   Editor.statusmsg_time = 0;
 
-  // atexit(editorFree);
   if (getWindowSize(&Editor.screen_rows, &Editor.screen_cols) == -1) die("getWindowSize");
   Editor.screen_rows -= 2;
 }
@@ -951,16 +974,6 @@ void editorRefreshScreen(){
                                             (Editor.render_position_x - Editor.col_offset) + 1);
   abAppend(&ab, buf, strlen(buf));
 
-
-  // TODO: rendering x pos
-  // if (Editor.cursor_y >= Editor.numrows){
-  //   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", Editor.cursor_y + 1, Editor.cursor_x + 1);
-  //   abAppend(&ab, buf, strlen(buf));
-  // } else {
-  //   snprintf(buf, sizeof(buf), "\x1b[%d;%dH", Editor.cursor_y + 1, Editor.cursor_x + LEFT_PADDING + 1);
-  //   abAppend(&ab, buf, strlen(buf));
-  // }
-
   abAppend(&ab, "\x1b[?25h", 6); // show cursor
 
   if (Editor.editorMode == INSERT) {
@@ -975,7 +988,6 @@ void editorRefreshScreen(){
 
 int mainLoop(){
 
-  // if (filename) editorOpen(filename);
   editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-O = open | Ctrl-N = new file | Ctrl-Q = quit");
 
   while(1){
