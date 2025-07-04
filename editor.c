@@ -17,7 +17,7 @@
 #include <unistd.h>
 
 #define CTRL_KEY(k) ((k) & 0x1f)
-#define EDITOR_VERSION "0.0.3"
+#define EDITOR_VERSION "0.0.4"
 #define TAB_STOP 3
 #define LEFT_PADDING 5
 #define QUIT_PERSISTENCE 3
