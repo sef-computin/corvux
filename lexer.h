@@ -8,6 +8,10 @@
     STRING,
     DTYPE,
     FNAME,
+    CONSTANT,
+    COMMENT,
+    MCOM_START,
+    MCOM_END,
     EOF
   };
 

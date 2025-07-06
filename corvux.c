@@ -43,7 +43,7 @@ void enableRawMode(){
   if (tcsetattr(STDIN_FILENO, TCSAFLUSH, &termios_raw) == -1) die("tcsetattr");
 }
 
-int main(int argc, char* argv[]){
+int main(int argc, char *argv[]){
   enableRawMode();
   
   initEditor();

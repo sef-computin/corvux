@@ -88,6 +88,7 @@ typedef struct {
   char *chars;
   char *render;
   unsigned char *hl;
+  int hl_open_comment;
 } erow;
 
 
@@ -192,13 +193,37 @@ void editorUpdateSyntax(erow *erow){
   int pos = 0;
   int token_len;
 
+  if (&erow->idx > 0){
+    erow->hl_open_comment = Editor.row[erow->idx-1].hl_open_comment;
+  } else {
+    erow->hl_open_comment = 0;
+  }
+
   while (token_type != EOF){
     pos = lexerGetPos();
 
     if (pos >= erow->render_size) return;
     token_type = lexerGetNextToken(&token_len);
 
-    memset(&erow->hl[pos], token_type, token_len);
+	 if (token_type == COMMENT){
+       memset(&erow->hl[pos], COMMENT, erow->render_size - pos);
+       return;
+ 	 }
+
+    if (token_type == MCOM_END){
+      erow->hl_open_comment = 0;
+    }
+
+    
+    if (token_type == MCOM_START){
+      erow->hl_open_comment = 1;
+    }
+
+    if (erow->hl_open_comment == 1){
+      memset(&erow->hl[pos], COMMENT, erow->render_size - pos); 
+    } else {
+      memset(&erow->hl[pos], token_type, token_len);
+    }
   }
 
   return;
@@ -248,7 +273,7 @@ void editorInsertRow(char *s, int at, size_t len) {
   Editor.row[at].render_size = 0;
   Editor.row[at].render = NULL;
   Editor.row[at].hl = NULL;
-  // Editor.row[at].hl_open_comment = 0;
+  Editor.row[at].hl_open_comment = 0;
   editorUpdateRow(&Editor.row[at]);
 
   Editor.numrows++;
@@ -501,9 +526,15 @@ int editorDrawLogo(struct abuf *ab){
 int editorSyntaxToColor(int hl){
   switch (hl){
     case NUMBER: return 33;
+    case CONSTANT: return 93;
     case STRING: return 36;
-    case KEYWORD: return 31;
+    case KEYWORD: return 35;
     case DTYPE: return 32;
+    
+    case MCOM_START:
+    case MCOM_END:
+    case COMMENT: return 90;
+    
     default: return 37;
   }
 }
