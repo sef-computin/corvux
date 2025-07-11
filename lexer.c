@@ -56,14 +56,14 @@ int C_GET_TOKEN_TYPE(char *token, int token_len, int flags){
   }
   
   for (int i = 0; C_HL_dtypes[i]; i++){
-    if (token_len != strlen(C_HL_dtypes[i])) continue;
+    if (token_len != (int)strlen(C_HL_dtypes[i])) continue;
     if (!strncmp(token, C_HL_dtypes[i], token_len)){
       return DTYPE;
     }
   } 
 
   for (int i = 0; C_HL_keywords[i]; i++){
-    if (token_len != strlen(C_HL_keywords[i])) continue;;
+    if (token_len != (int)strlen(C_HL_keywords[i])) continue;
     if (!strncmp(token, C_HL_keywords[i], token_len)){
       return KEYWORD;
     }

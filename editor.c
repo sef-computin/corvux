@@ -182,6 +182,8 @@ int editorRowRxToCx(erow *row, int rx){
 }
 
 void editorUpdateSyntax(erow *erow){
+  int token_type = 0, pos = 0, token_len = 0;
+
   erow->hl = realloc(erow->hl, erow->render_size);
   memset(erow->hl, PLAIN, erow->render_size);
 
@@ -189,9 +191,6 @@ void editorUpdateSyntax(erow *erow){
 
   lexerSetInput(erow->render, erow->render_size);
 
-  int token_type;
-  int pos = 0;
-  int token_len;
 
   if (&erow->idx > 0){
     erow->hl_open_comment = Editor.row[erow->idx-1].hl_open_comment;
@@ -610,10 +609,11 @@ void editorDrawMessageBar(struct abuf *ab){
 void editorDrawStatusBar(struct abuf *ab) {
   // abAppend(ab, "\x1b[7m", 4);
   char status[80], rstatus[80];
-  char mstatus[9];
+  char mstatus[11];
 
   abAppend(ab, "\x1b[46m", 5);
-  int modelen = snprintf(mstatus, sizeof(mstatus), "|%s|", MODES_STRING[Editor.editorMode]);
+  
+  int modelen = snprintf(mstatus, sizeof(mstatus), "| %s |", MODES_STRING[Editor.editorMode]);
   abAppend(ab, mstatus, modelen);
   // abAppend(ab, " ", 1);
   int cols_left = Editor.screen_cols - modelen - 1; 
