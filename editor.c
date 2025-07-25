@@ -108,7 +108,7 @@ struct editorConfig{
   int dirty;
   char editorMode;
   char *filename;
-  // char *command_buf;
+  char command_buf[16];
   char statusmsg[80];
   time_t statusmsg_time;
 
@@ -388,13 +388,15 @@ char *editorRowsToString(int *buflen){
 }
 
 void editorOpen(char *filename){
+  if (filename == NULL) return;
+
   if (Editor.filename != NULL) free(Editor.filename);
   Editor.filename = strdup(filename);
 
   char *ext = strrchr(Editor.filename, '.');
   if (ext != NULL) lexerSetSyntax(ext);
 
-  FILE *fp = fopen(filename, "r");
+  FILE *fp = fopen(Editor.filename, "r");
   if (!fp) die("open");
 
   char *line = NULL;
@@ -413,15 +415,34 @@ void editorOpen(char *filename){
   Editor.dirty = 0;
 }
 
-void editorSave(){
+void editorSave(char *filename){
+  if (filename != NULL){
+    free(Editor.filename);
+    Editor.filename = strdup(filename);
+
+    char *ext = strrchr(Editor.filename, '.');
+    if (ext != NULL){
+      lexerSetSyntax(ext);
+    }
+
+    for (int filerow = 0; filerow < Editor.numrows; filerow++){
+      editorUpdateSyntax(&Editor.row[filerow]);
+    }
+
+  }
+
   if (Editor.filename == NULL) {
     Editor.filename = editorPrompt("Save as: %s (ESC to cancel)", NULL);
+
     if (Editor.filename == NULL){
-      editorSetStatusMessage("Save aborted");
+      editorSetStatusMessage("Save aborted: no filename");
       return;
     }
+
     char *ext = strrchr(Editor.filename, '.');
-    lexerSetSyntax(ext);
+    if (ext != NULL){
+      lexerSetSyntax(ext);
+    }
 
     for (int filerow = 0; filerow < Editor.numrows; filerow++){
       editorUpdateSyntax(&Editor.row[filerow]);
@@ -811,43 +832,91 @@ void editorMoveCursor(int key){
   }
 }
 
-int editorProcessCommand(){
-  char* command;
-  command = editorPrompt(":%s", NULL);
+void editorProcessCommand(char *command, int c){
+  if (command == NULL || c != '\r'){ return; }
 
-  if (command == NULL){
-    return 0;
-  }
-
-
-  if (strchr(command, 'w')){
-    editorSave();
-  }
+  char *token = strtok(command, " ");
+  char *command_token = token;
   
-  if (strchr(command, 'q')){
-    if (!Editor.dirty || strchr(command, '!')){
-      return 1;
+
+  if (command_token[0] == 'n'){
+    if (!Editor.dirty || strchr(token, '!')){
+      initEditor();
+      token = strtok(NULL, " ");
+      if (token != NULL) Editor.filename = strdup(token);
+    } else {
+      editorSetStatusMessage("You have unsaved changes");
+    }
+  }
+
+  if (command_token[0] == 'o'){
+    if (!Editor.dirty || strchr(command_token, '!')){
+      token = strtok(NULL, " ");
+
+      if (token != NULL){
+        initEditor();
+        editorOpen(token);
+      } else {
+        char *filename = editorPrompt("Open file: %s (ESC to cancel)", NULL);
+        if (filename != NULL){
+          initEditor();
+          editorOpen(token);
+          free(filename);
+        } else{
+          editorSetStatusMessage("Operation aborted");
+        }
+      }
+    } else {
+      editorSetStatusMessage("You have unsaved changes");
+    }
+  }
+
+  if (command_token[0] == 'w'){
+    token = strtok(NULL, " ");
+    editorSave(token);
+  }
+
+  if (strchr(command_token, 'q')){
+    if (!Editor.dirty || strchr(token, '!')){
+      command = realloc(command, 2);
+
+      command[0] = -1; command[1] = '\0';
     }
     editorSetStatusMessage("You have unsaved changes!");
   }
 
-  return 0;
+  token = NULL;
+  command_token = NULL;
 }
+    // if (filename != NULL) free(filename);
 
 int editorProcessNormalMode(int c){
-
-  static int quit_times = QUIT_PERSISTENCE;
 
   switch (c) {
     case ':':
       Editor.editorMode = COMMND;
-      if (editorProcessCommand() == 1){ 
-        write(STDOUT_FILENO, "\x1b[2J", 4);
-        write(STDOUT_FILENO, "\x1b[H", 3);
-        return -1; 
-      }
+      char *ret = editorPrompt(":%s", editorProcessCommand);
       Editor.editorMode = NORMAL;
+
+      if (ret != NULL){
+        int retcode = ret[0];
+        free(ret);
+        return retcode;
+      }
       break;
+
+    case CTRL_KEY('u'):
+    case CTRL_KEY('d'):
+      if (c == CTRL_KEY('u')){
+        Editor.cursor_y = Editor.row_offset;
+      } else if (c == CTRL_KEY('d')){
+        Editor.cursor_y = Editor.row_offset + Editor.screen_rows - 1;
+        Editor.cursor_y = Editor.cursor_y > Editor.numrows ? Editor.numrows : Editor.cursor_y; 
+      }
+      int times = Editor.screen_rows;
+      while (times--) editorMoveCursor(c == CTRL_KEY('u') ? ARROW_UP : ARROW_DOWN);
+      break;
+
     case 'h':
       editorMoveCursor(ARROW_LEFT);
       break;
@@ -881,51 +950,12 @@ int editorProcessNormalMode(int c){
       break;
 
     case CTRL_KEY('s'):
-      editorSave();
+      editorSave(NULL);
       break;
     
-    case CTRL_KEY('o'):
-      if (Editor.dirty && quit_times > 0) {
-        editorSetStatusMessage("WARNING!!! File has unsaved changes. "
-          "Press %d more times to quit.", quit_times);
-        quit_times--;
-        return 0;
-      }
-      char *fname = editorPrompt("Open file: %s (ESC to cancel)", NULL);
-      if (fname == NULL){
-        editorSetStatusMessage("Operation aborted");
-        free(fname);
-        break;
-      }
-      initEditor();
-      editorOpen(fname);
-      free(fname);
-      break;
-
-    case CTRL_KEY('n'):
-      if (Editor.dirty && quit_times > 0) {
-        editorSetStatusMessage("WARNING!!! File has unsaved changes. "
-          "Press %d more times to quit.", quit_times);
-        quit_times--;
-        return 0;
-      }
-      initEditor();
-      break;
-
-    case CTRL_KEY('q'):
-      if (Editor.dirty && quit_times > 0) {
-        editorSetStatusMessage("WARNING!!! File has unsaved changes. "
-          "Press %d more times to quit.", quit_times);
-        quit_times--;
-        return 0;
-      }
-      write(STDOUT_FILENO, "\x1b[2J", 4);
-      write(STDOUT_FILENO, "\x1b[H", 3);
-      return -1;
-
+    
   }
 
-  quit_times = QUIT_PERSISTENCE;
   return 0;
 }
 
@@ -934,14 +964,6 @@ int editorProcessInsertMode(int c){
   switch (c) {
     case '\r':
       editorInsertNewline();
-      break;
-    
-    
-    case HOME_KEY:
-      Editor.cursor_x = 0;
-      break;
-    case END_KEY:
-      if (Editor.cursor_y < Editor.numrows) Editor.cursor_x = Editor.row[Editor.cursor_y].size;
       break;
 
     case CTRL_KEY('l'):
@@ -1015,6 +1037,10 @@ void editorFree(){
   free(Editor.filename);
 }
 
+void editorClearCmdBuf(){
+  for(int i = 0; i < sizeof(Editor.command_buf); i++){ Editor.command_buf[i] = 0; }
+}
+
 void initEditor(){
   Editor.cursor_x = 0;
   Editor.cursor_y = 0;
@@ -1026,6 +1052,9 @@ void initEditor(){
   Editor.row_offset = 0;
   Editor.col_offset = 0;
   Editor.filename = NULL;
+
+  editorClearCmdBuf();
+
   Editor.statusmsg[0] = '\0';
   Editor.statusmsg_time = 0;
 
@@ -1064,12 +1093,16 @@ void editorRefreshScreen(){
 
 int mainLoop(){
 
-  editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-O = open | Ctrl-N = new file | Ctrl-Q = quit");
+  // editorSetStatusMessage("HELP: Ctrl-S = save | Ctrl-O = open | Ctrl-N = new file | Ctrl-Q = quit");
 
   while(1){
     editorRefreshScreen();
     int ret = editorProcessKeypress();
-    if (ret == -1){ break; }
+    if (ret == -1){
+      write(STDOUT_FILENO, "\x1b[2J", 4);
+      write(STDOUT_FILENO, "\x1b[H", 3);
+      break;
+    }
   }
 
   return 0;

@@ -206,6 +206,9 @@ char *lexerGetSyntaxName(){
 }
 
 int lexerSetSyntax(char *extension){
+  if (extension == NULL){
+    return -1;
+  }
  
   for (unsigned int j = 0; j < SXDB_ENTRIES; j++){
     struct syntaxRules *s = &SXDB[j];
